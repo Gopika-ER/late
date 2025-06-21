@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Late Comers Scanner Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+
+<body>
+    <header>
+        <h1>Late Comers Dashboard</h1>
+    </header>
+
+    <main>
+        <section class="scanner">
+            <h2>Scan Student ID</h2>
+            <div id="reader" style="width: 300px;"></div>
+            <input type="text" id="barcodeInput" placeholder="Scan or enter barcode...">
+            <button onclick="submitScan()">Submit</button>
+        </section>
+
+        <section class="dashboard">
+            <h2>Latecomers List</h2>
+            <div class="filters">
+                <input type="text" id="filterName" placeholder="Filter by Name" onkeyup="filterTable()">
+                <input type="text" id="filterDept" placeholder="Filter by Department" onkeyup="filterTable()">
+                <input type="number" id="filterLateCount" placeholder="Min Late Count" onkeyup="filterTable()">
+            </div>
+            <table id="latecomersTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Department</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Late Count</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- Rows will be inserted here -->
+                </tbody>
+            </table>
+        </section>
+
+        <section class="summary">
+            <h2>Summary</h2>
+            <div id="summaryContent">
+                <!-- Summary data will be inserted here -->
+            </div>
+        </section>
+    </main>
+
+    <script>
+        async function submitScan() {
+            const barcode = document.getElementById('barcodeInput').value;
+            if (!barcode) return alert('Please enter a barcode');
+            const res = await fetch('/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ barcode })
+            });
+            const data = await res.json();
+            alert('Scan recorded. Late count: ' + data.total_late);
+            loadLatecomers();
+            loadSummary();
+        }
+
+        async function loadLatecomers() {
+            const res = await fetch('/latecomers');
+            const data = await res.json();
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.name}</td>
+                    <td>${row.department}</td>
+                    <td>${row.date}</td>
+                    <td>${row.time}</td>
+                    <td>${row.late_count}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadSummary() {
+            const res = await fetch('/summaries');
+            const data = await res.json();
+            const div = document.getElementById('summaryContent');
+            div.innerHTML = `
+                <p><strong>Most Frequent Latecomer:</strong> ${data.top_late?.name ?? 'N/A'} (${data.top_late?.count ?? 0})</p>
+                <h3>Average Late Count per Department:</h3>
+                <ul>
+                    ${Object.entries(data.avg_per_dept).map(([dept, avg]) => `<li>${dept}: ${avg.toFixed(2)}</li>`).join('')}
+                </ul>
+            `;
+        }
+
+        function filterTable() {
+            const nameFilter = document.getElementById('filterName').value.toLowerCase();
+            const deptFilter = document.getElementById('filterDept').value.toLowerCase();
+            const countFilter = parseInt(document.getElementById('filterLateCount').value || 0);
+            const rows = document.querySelectorAll('#latecomersTable tbody tr');
+
+            rows.forEach(row => {
+                const [name, dept, , , count] = Array.from(row.children).map(td => td.textContent.toLowerCase());
+                const countNum = parseInt(count);
+                const match = name.includes(nameFilter) && dept.includes(deptFilter) && countNum >= countFilter;
+                row.style.display = match ? '' : 'none';
+            });
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            document.getElementById('barcodeInput').value = decodedText;
+            submitScan();
+        }
+
+        function startScanner() {
+            const scanner = new Html5Qrcode("reader");
+            scanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: 250 },
+                onScanSuccess
+            ).catch(err => console.error(err));
+        }
+
+        loadLatecomers();
+        loadSummary();
+        startScanner();
+    </script>
+</body>
+
+</html>
